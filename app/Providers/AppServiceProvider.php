@@ -5,6 +5,8 @@ namespace App\Providers;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use App\Models\User;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -24,6 +26,21 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Gate::before akan mengeksekusi pengecekan sebelum Gate individu
+        Gate::before(function (User $user, string $ability) {
+            if ($user->role === 'admin') {
+                return true; // Admin otomatis lolos akses ke semua fitur
+            }
+        });
+
+        Gate::define('isAdmin', function (User $user) {
+            return $user->role === 'admin';
+        });
+
+        Gate::define('isStudent', function (User $user) {
+            return $user->role === 'student';
+        });
     }
 
     /**
