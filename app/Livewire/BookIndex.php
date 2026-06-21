@@ -86,7 +86,19 @@ class BookIndex extends Component
     public function delete($id, BookService $bookService)
     {
         $book = Book::find($id);
+        
         if ($book) {
+            // === CEK INTEGRITAS RELASI (Pencegahan Error 1451) ===
+            // Memastikan relasi ke loanDetails kosong sebelum buku dihapus
+            if ($book->loanDetails()->exists()) {
+                Flux::toast(
+                    text: 'Buku tidak dapat dihapus karena masih memiliki riwayat peminjaman.', 
+                    variant: 'danger'
+                );
+                return;
+            }
+
+            // Jika aman, jalankan service hapus
             $bookService->deleteBook($book);
             Flux::toast('Buku berhasil dihapus.');
         }

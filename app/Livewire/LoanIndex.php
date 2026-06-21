@@ -12,6 +12,7 @@ use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Flux;
 use Exception;
+use Carbon\Carbon;
 
 class LoanIndex extends Component
 {
@@ -68,18 +69,60 @@ class LoanIndex extends Component
         }
 
         try {
+            // Status loan secara default akan diset 'pending' pada service-nya
             $loanService->createLoan(Auth::id(), $this->selectedBooks);
 
             $this->selectedBooks = [];
             $this->showConfirmModal = false;
 
-            Flux::toast(text: 'Peminjaman buku berhasil diproses!', variant: 'success');
+            Flux::toast(text: 'Pengajuan peminjaman buku berhasil dikirim!', variant: 'success');
         } catch (Exception $e) {
             $this->showConfirmModal = false;
             Flux::toast(text: $e->getMessage(), variant: 'danger');
         }
     }
 
+    // FUNGSI BARU: ACC Peminjaman oleh Admin
+    public function approveLoan($loanId)
+    {
+        $loan = Loan::with('details.book')->findOrFail($loanId);
+        
+        if ($loan->status !== 'pending') {
+            Flux::toast(text: 'Aksi tidak valid atau status telah berubah.', variant: 'warning');
+            return;
+        }
+
+        // Kurangi stok buku secara aktual saat disetujui
+        foreach ($loan->details as $detail) {
+            $book = $detail->book;
+            if ($book && $book->stock > 0) {
+                $book->decrement('stock', 1);
+            }
+        }
+
+        $loan->status = 'approved';
+        $loan->save();
+
+        Flux::toast(text: 'Peminjaman buku berhasil disetujui.', variant: 'success');
+    }
+
+    // FUNGSI BARU: Tolak Peminjaman oleh Admin
+    public function rejectLoan($loanId)
+    {
+        $loan = Loan::findOrFail($loanId);
+        
+        if ($loan->status !== 'pending') {
+            Flux::toast(text: 'Aksi tidak valid atau status telah berubah.', variant: 'warning');
+            return;
+        }
+
+        $loan->status = 'rejected';
+        $loan->save();
+
+        Flux::toast(text: 'Peminjaman buku telah ditolak.', variant: 'danger');
+    }
+
+    // DIPERBARUI: Pengembalian Buku dengan Otomasi Denda
     public function returnBook($loanId)
     {
         try {
@@ -90,6 +133,7 @@ class LoanIndex extends Component
                 return;
             }
 
+            // 1. Kembalikan stok buku
             $details = LoanDetail::where('loan_id', $loanId)->get();
             foreach ($details as $detail) {
                 $book = Book::find($detail->book_id);
@@ -98,10 +142,34 @@ class LoanIndex extends Component
                 }
             }
 
+            // 2. Ubah status peminjaman menjadi returned (selesai)
             $loan->status = 'returned';
             $loan->save();
 
-            Flux::toast(text: 'Buku berhasil dikembalikan, stok telah diperbarui.', variant: 'success');
+            // 3. Otomasi Cek Denda (Keterlambatan dihitung dari due_date)
+            $now = Carbon::now();
+            $dueDate = Carbon::parse($loan->due_date);
+
+            if ($now->greaterThan($dueDate)) {
+                // Hitung jumlah hari terlambat
+                $lateDays = $now->diffInDays($dueDate);
+                
+                // Tarif denda per hari (contoh: Rp 2.000 per hari, silakan disesuaikan aturan perpusmu)
+                $finePerDay = 2000; 
+                $fineAmount = $lateDays * $finePerDay;
+
+                // Simpan otomatis ke tabel fines
+                \App\Models\Fine::create([
+                    'loan_id' => $loan->id,
+                    'amount' => $fineAmount,
+                    'paid' => false, // Status belum lunas
+                ]);
+
+                Flux::toast(text: 'Buku berhasil dikembalikan. Anda terkena denda Rp ' . number_format($fineAmount, 0, ',', '.') . ' karena terlambat mengembalikan.', variant: 'warning');
+            } else {
+                Flux::toast(text: 'Buku berhasil dikembalikan tepat waktu.', variant: 'success');
+            }
+
         } catch (Exception $e) {
             Flux::toast(text: 'Gagal memproses pengembalian.', variant: 'danger');
         }
@@ -120,16 +188,23 @@ class LoanIndex extends Component
             ->with('category')
             ->paginate(6);
 
+        // Peminjaman milik student yang sedang login
         $myLoans = Loan::where('user_id', Auth::id())
             ->with(['details.book'])
             ->latest()
             ->get();
+
+        // TAMBAHAN: Ambil semua data peminjaman untuk admin (mendukung pagination)
+        $allLoansForAdmin = Loan::with(['user', 'details.book'])
+            ->latest()
+            ->paginate(5);
 
         $categories = Category::all();
 
         return view('pages.book.loan', [
             'availableBooks' => $availableBooks,
             'myLoans' => $myLoans,
+            'allLoansForAdmin' => $allLoansForAdmin, // Variabel untuk ditampilkan ke view blade admin
             'categories' => $categories
         ])->layout('layouts.app');
     }

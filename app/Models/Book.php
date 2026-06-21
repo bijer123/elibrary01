@@ -2,14 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Book extends Model
 {
-    use HasFactory;
-
+    // Mengizinkan mass assignment untuk kolom-kolom tabel books
     protected $fillable = [
         'isbn',
         'title',
@@ -19,10 +18,18 @@ class Book extends Model
     ];
 
     /**
-     * Relasi balik ke Model Category (Setiap Buku memiliki satu Kategori)
+     * Relasi Many-to-One ke tabel categories
      */
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Relasi One-to-Many ke tabel loan_details (untuk pengecekan riwayat peminjaman)
+     */
+    public function loanDetails(): HasMany
+    {
+        return $this->hasMany(LoanDetail::class);
     }
 }

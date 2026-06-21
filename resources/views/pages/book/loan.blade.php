@@ -85,8 +85,8 @@
                         <div class="p-3 rounded-lg border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs space-y-1">
                             <div class="flex justify-between items-center">
                                 <span class="font-mono text-zinc-400">#LN-{{ $loan->id }}</span>
-                                <flux:badge size="sm" inset="top bottom" color="{{ $loan->status === 'borrowed' ? 'amber' : 'green' }}">
-                                    {{ $loan->status === 'borrowed' ? 'Dipinjam' : 'Kembali' }}
+                                <flux:badge size="sm" inset="top bottom" color="{{ $loan->status === 'borrowed' ? 'amber' : ($loan->status === 'pending' ? 'zinc' : 'green') }}">
+                                    {{ $loan->status === 'borrowed' ? 'Dipinjam' : ($loan->status === 'pending' ? 'Menunggu ACC' : 'Selesai/Kembali') }}
                                 </flux:badge>
                             </div>
                             <div class="font-medium text-zinc-700 dark:text-zinc-300">
@@ -98,8 +98,31 @@
                                 <div>
                                     <span>Tgl Pinjam: {{ \Carbon\Carbon::parse($loan->loan_date)->format('d M Y') }}</span><br>
                                     <span class="text-red-500 font-medium">Deadline: {{ \Carbon\Carbon::parse($loan->due_date)->format('d M Y') }}</span>
+                                    
+                                    @if($loan->status === 'returned')
+                                        <div class="mt-1">
+                                            @php
+                                                $fine = \App\Models\Fine::where('loan_id', $loan->id)->first();
+                                            @endphp
+                                            
+                                            @if($fine)
+                                                <span class="inline-block px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-semibold border border-red-100">
+                                                    Denda: Rp {{ number_format($fine->amount, 0, ',', '.') }}
+                                                    @if($fine->paid)
+                                                        <span class="text-green-600 font-bold">(Lunas)</span>
+                                                    @else
+                                                        <span class="text-red-600 font-bold">(Belum Lunas)</span>
+                                                    @endif
+                                                </span>
+                                            @else
+                                                <span class="inline-block px-1.5 py-0.5 bg-green-50 text-green-600 rounded font-semibold border border-green-100">
+                                                    Tepat Waktu (Tanpa Denda)
+                                                </span>
+                                            @endif
+                                        </div>
+                                    @endif
                                 </div>
-                                
+                            
                                 @if($loan->status === 'borrowed')
                                     <flux:button wire:click="returnBook({{ $loan->id }})" variant="primary" size="xs" class="cursor-pointer">
                                         Kembalikan
@@ -114,6 +137,72 @@
             </div>
         </div>
     </div>
+
+    @can('isAdmin')
+        <div class="border-t border-zinc-200 dark:border-zinc-800 pt-8 space-y-4">
+            <div>
+                <h2 class="text-xl font-bold text-zinc-800 dark:text-white">Persetujuan Peminjaman (Admin)</h2>
+                <p class="text-sm text-zinc-500 dark:text-zinc-400">Kelola permintaan peminjaman buku dari mahasiswa</p>
+            </div>
+
+            <div class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-4 shadow-sm overflow-x-auto">
+                <flux:table :paginate="$allLoansForAdmin">
+                    <flux:table.columns>
+                        <flux:table.column>ID Peminjam</flux:table.column>
+                        <flux:table.column>Peminjam</flux:table.column>
+                        <flux:table.column>Buku yang Dipilih</flux:table.column>
+                        <flux:table.column>Status</flux:table.column>
+                        <flux:table.column align="end">Aksi</flux:table.column>
+                    </flux:table.columns>
+
+                    <flux:table.rows>
+                        @forelse ($allLoansForAdmin as $adminLoan)
+                            <flux:table.row :key="$adminLoan->id">
+                                <flux:table.cell class="font-mono text-xs text-zinc-400">#LN-{{ $adminLoan->id }}</flux:table.cell>
+                                <flux:table.cell class="font-medium whitespace-nowrap">{{ $adminLoan->user->name ?? '-' }}</flux:table.cell>
+                                <flux:table.cell>
+                                    <ul class="list-disc pl-4 space-y-1 text-xs">
+                                        @foreach($adminLoan->details as $detailItem)
+                                            <li>{{ $detailItem->book->title ?? 'Buku tidak ditemukan' }}</li>
+                                        @endforeach
+                                    </ul>
+                                </flux:table.cell>
+                                <flux:table.cell>
+                                    @if($adminLoan->status === 'pending')
+                                        <flux:badge size="sm" color="zinc" inset="top bottom">Menunggu Konfirmasi</flux:badge>
+                                    @elseif($adminLoan->status === 'approved')
+                                        <flux:badge size="sm" color="amber" inset="top bottom">Sedang Dipinjam</flux:badge>
+                                    @elseif($adminLoan->status === 'rejected')
+                                        <flux:badge size="sm" color="red" inset="top bottom">Ditolak</flux:badge>
+                                    @else
+                                        <flux:badge size="sm" color="green" inset="top bottom">Selesai/Dikembalikan</flux:badge>
+                                    @endif
+                                </flux:table.cell>
+                                <flux:table.cell align="end">
+                                    @if($adminLoan->status === 'pending')
+                                        <div class="flex gap-2 justify-end">
+                                            <flux:button wire:click="approveLoan({{ $adminLoan->id }})" variant="primary" size="sm" class="cursor-pointer">Setuju</flux:button>
+                                            <flux:button wire:click="rejectLoan({{ $adminLoan->id }})" variant="danger" size="sm" class="cursor-pointer">Tolak</flux:button>
+                                        </div>
+                                    @else
+                                        <span class="text-zinc-400 dark:text-zinc-500 text-xs">-</span>
+                                    @endif
+                                </flux:table.cell>
+                            </flux:table.row>
+                        @empty
+                            <flux:table.row>
+                                <flux:table.cell colspan="5" class="text-center py-8 text-zinc-400 dark:text-zinc-500">Belum ada data peminjaman.</flux:table.cell>
+                            </flux:table.row>
+                        @endforelse
+                    </flux:table.rows>
+                </flux:table>
+                
+                <div class="mt-4">
+                    {{ $allLoansForAdmin->links() }}
+                </div>
+            </div>
+        </div>
+    @endcan
 
     <flux:modal wire:model="showConfirmModal" class="md:w-[24rem]">
         <div class="space-y-6">

@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use App\Livewire\Forms\CategoryForm;
+use Flux\Flux; // ✅ Tambah ini
 
 new class extends Component
 {
@@ -13,11 +14,9 @@ new class extends Component
 
         Flux::modal('create-category')->close();
 
-        // session
         session()->flash('success', 'Category created successfully');
 
-        $this->redirectRoute('category.index',navigate: true);
-        
+        $this->redirectRoute('categories.index', navigate: true); // ✅ Fix nama route
     }
 
     public function resetForm()

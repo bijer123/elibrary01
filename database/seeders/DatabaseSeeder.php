@@ -15,11 +15,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
+        // 1. Membuat User bawaan
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
+        ]);
+
+        // 2. Memanggil BookSeeder yang sudah dibuat sebelumnya
+        $this->call([
+            BookSeeder::class,
         ]);
     }
 }
